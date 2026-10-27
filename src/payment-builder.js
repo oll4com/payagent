@@ -34,7 +34,7 @@ export async function buildPaymentRequest({ xpubs, task, chain, prefix }) {
     }
   }
   coins.sort((a, b) => (b.value > a.value ? 1 : -1));
-  const price = BigInt(task.priceSats);
+  const price = BigInt(task.amountSats);
   const chosen = [];
   let total = 0n;
   for (const coin of coins) {
@@ -58,7 +58,7 @@ export async function buildPaymentRequest({ xpubs, task, chain, prefix }) {
     transaction: binToHex(encodeTransaction({ version: 2, inputs, outputs, locktime: 0 })),
     sourceOutputs,
     inputPaths: chosen.map((c, i) => [i, c.path, c.index]),
-    userPrompt: `Pay ${task.priceSats} satoshis for task ${task.id.slice(0, 8)}`
+    userPrompt: `Pay ${task.amountSats} satoshis for task ${task.id.slice(0, 8)}`
   };
 }
 
@@ -67,5 +67,5 @@ export function paysTask(signedHex, task) {
   const tx = decodeTransaction(hexToBin(signedHex));
   if (typeof tx === 'string') return false;
   const target = binToHex(lockingBytecode(task.address));
-  return tx.outputs.some((o) => binToHex(o.lockingBytecode) === target && o.valueSatoshis >= BigInt(task.priceSats));
+  return tx.outputs.some((o) => binToHex(o.lockingBytecode) === target && o.valueSatoshis >= BigInt(task.amountSats));
 }

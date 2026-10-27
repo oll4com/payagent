@@ -7,11 +7,13 @@ import { createAuditLog, verifyChain } from './audit.js';
 import { createElectrumChain } from './chain.js';
 import { createAgent } from './agent.js';
 import { createService } from './service.js';
+import { checkAddress, checkXpub, createOwnerStore } from './receiver.js';
 
 const MAX_BODY = 256 * 1024; // a signed transaction with many inputs
 
-export function createApp({ config, service, audit }) {
+export function createApp({ config, service, audit, owner }) {
   const page = readFileSync(new URL('../public/index.html', import.meta.url));
+  const ownerPage = readFileSync(new URL('../public/owner.html', import.meta.url));
   const isReviewer = (req) => {
     const given = Buffer.from(String(req.headers['x-review-token'] ?? ''));
     const want = Buffer.from(config.reviewToken);
@@ -39,6 +41,10 @@ export function createApp({ config, service, audit }) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         return res.end(page);
       }
+      if (req.method === 'GET' && pathname === '/owner') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end(ownerPage);
+      }
       if (req.method === 'GET' && pathname === '/wallet.bundle.js') {
         res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
         return res.end(readFileSync(new URL('../public/wallet.bundle.js', import.meta.url)));
@@ -50,6 +56,31 @@ export function createApp({ config, service, audit }) {
       if (resource === 'audit' && req.method === 'GET') {
         const entries = audit.read();
         return send(200, { verified: verifyChain(entries), entries });
+      }
+      // The owner sets where payments go: a wallet paired over WizardConnect (its receive xpub) or one static address.
+      if (resource === 'owner') {
+        if (!isReviewer(req)) return send(403, { error: 'owner token required' });
+        if (!id && req.method === 'GET') {
+          const r = owner.current();
+          return send(200, { receiver: r && { mode: r.mode, path: r.path, xpub: r.xpub && `${r.xpub.slice(0, 12)}…${r.xpub.slice(-6)}`, address: r.address } });
+        }
+        if (id === 'wallet' && req.method === 'POST') {
+          const { xpub, path = 'receive' } = await body(req);
+          owner.save({ hd: checkXpub(xpub, path, config.network) });
+          audit.append({ status: 'OWNER_WALLET_SET', path });
+          return send(200, { ok: true });
+        }
+        if (id === 'wallet' && req.method === 'DELETE') {
+          owner.save({ hd: null });
+          audit.append({ status: 'OWNER_WALLET_REMOVED' });
+          return send(200, { ok: true });
+        }
+        if (id === 'static-address' && req.method === 'POST') {
+          owner.save({ staticAddress: checkAddress((await body(req)).address, config.addressPrefix) });
+          audit.append({ status: 'OWNER_STATIC_ADDRESS_SET' });
+          return send(200, { ok: true });
+        }
+        return send(404, { error: 'not found' });
       }
       if (resource !== 'tasks') return send(404, { error: 'not found' });
       // The list hands out task ids, and an id unlocks a paid result: reviewers only.
@@ -74,11 +105,15 @@ export function createApp({ config, service, audit }) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const config = loadConfig();
+  if (config.hdPublicKey) checkXpub(config.hdPublicKey, config.hdPublicKeyPath, config.network);
+  if (config.receiveAddress) config.receiveAddress = checkAddress(config.receiveAddress, config.addressPrefix);
+  if (!config.reviewToken || config.reviewToken.length < 24) throw new Error('set REVIEW_TOKEN to a random secret of 24+ characters');
   mkdirSync(config.dataDir, { recursive: true });
   const audit = createAuditLog(join(config.dataDir, 'audit.jsonl'));
+  const owner = createOwnerStore(join(config.dataDir, 'owner.json'), config);
   const service = createService({
-    config, audit, chain: createElectrumChain(config.electrumHost), agent: createAgent(),
+    config, audit, owner, chain: createElectrumChain(config.electrumHost), agent: createAgent(),
     storePath: join(config.dataDir, 'tasks.json')
   });
-  createApp({ config, service, audit }).listen(config.port, () => console.log(`pay-per-task agent on :${config.port} (${config.network})`));
+  createApp({ config, service, audit, owner }).listen(config.port, () => console.log(`pay-per-task agent on :${config.port} (${config.network})`));
 }

@@ -1,11 +1,5 @@
-// Watch-only Bitcoin Cash: per-task receive addresses come from an HD public key (the server never holds a private key),
-// and payments are read from an Electrum (Fulcrum) server.
-import { hdPublicKeyToP2pkhCashAddress } from '@bitauth/libauth';
+// Reads and broadcasts on Bitcoin Cash through an Electrum (Fulcrum) server; it never holds a key.
 import { ElectrumClient } from '@electrum-cash/network';
-
-export function taskAddress(hdPublicKey, index, prefix) {
-  return hdPublicKeyToP2pkhCashAddress({ hdPublicKey, addressIndex: index, prefix }).address;
-}
 
 export function createElectrumChain(host) {
   let client;
@@ -22,6 +16,11 @@ export function createElectrumChain(host) {
       const result = await (await connected()).request('blockchain.address.get_balance', address);
       if (result instanceof Error) throw result;
       return Number(result.confirmed ?? 0) + Number(result.unconfirmed ?? 0);
+    },
+    async tipHeight() {
+      const tip = await (await connected()).request('blockchain.headers.get_tip');
+      if (tip instanceof Error) throw tip;
+      return tip.height;
     },
     async listUnspent(address) {
       const result = await (await connected()).request('blockchain.address.listunspent', address);

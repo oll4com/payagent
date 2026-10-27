@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Owner · Pay-per-task Agent</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; color: #1b1b1f; }
+  label { display: block; margin-top: 1rem; font-weight: 600; }
+  input { width: 100%; box-sizing: border-box; font: inherit; padding: .5rem; }
+  button { margin-top: 1rem; font: inherit; padding: .5rem 1rem; }
+  .card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-top: 1.5rem; }
+</style>
+</head>
+<body>
+<h1>Owner</h1>
+<p>Choose where customers' payments go. Pair your wallet once: it shares only its receive xpub, so the server makes a new
+address for every task and never holds a key. Or set one receive address as a fallback.</p>
+<label for="token">Owner token</label>
+<input id="token" type="password" autocomplete="current-password">
+<button id="show" type="button">Show the current wallet</button>
+<p id="current" aria-live="polite"></p>
+<div class="card">
+  <h2>Pair a wallet (WizardConnect)</h2>
+  <button id="pair" type="button">Pair wallet</button>
+  <div id="pairing" hidden>
+    <p>Scan with your wallet:</p>
+    <div id="qr" style="max-width:16rem" role="img" aria-label="WizardConnect pairing code"></div>
+    <p><a id="wizlink">Open in a wallet on this device</a></p>
+  </div>
+</div>
+<div class="card">
+  <h2>Fallback: one receive address</h2>
+  <label for="address">Receive address</label>
+  <input id="address" autocomplete="off">
+  <button id="save-address" type="button">Save address</button>
+</div>
+<p id="status" aria-live="polite"></p>
+<script type="module">
+const el = (id) => document.getElementById(id);
+const token = () => el('token').value;
+const call = async (method, path, body) => {
+  const r = await fetch(path, { method, headers: { 'content-type': 'application/json', 'x-review-token': token() }, body: body && JSON.stringify(body) });
+  const v = await r.json();
+  if (!r.ok) throw new Error(v.error ?? `failed (${r.status})`);
+  return v;
+};
+const status = (text) => { el('status').textContent = text; };
+async function show() {
+  const { receiver } = await call('GET', '/api/owner');
+  el('current').textContent = !receiver ? 'No receiving wallet yet.'
+    : receiver.mode === 'hd' ? `Paired wallet (${receiver.path} xpub ${receiver.xpub}): a new address per task.`
+    : `Static address ${receiver.address}: each task gets its own amount.`;
+}
+el('show').addEventListener('click', () => show().catch((e) => status(e.message)));
+el('pair').addEventListener('click', async () => {
+  try {
+    const { pairWallet, qrSvg } = await import('/wallet.bundle.js');
+    const { xpub, walletName } = await pairWallet({ onPairing: (uri, qrUri) => {
+      el('pairing').hidden = false; el('qr').innerHTML = qrSvg(qrUri); el('wizlink').href = uri; status('Waiting for your wallet…');
+    } });
+    el('pairing').hidden = true;
+    await call('POST', '/api/owner/wallet', { xpub, path: 'receive' });
+    status(`Paired with ${walletName ?? 'your wallet'}.`);
+    await show();
+  } catch (e) { el('pairing').hidden = true; status(`Not paired: ${e.message}`); }
+});
+el('save-address').addEventListener('click', async () => {
+  try { await call('POST', '/api/owner/static-address', { address: el('address').value }); status('Address saved.'); await show(); }
+  catch (e) { status(e.message); }
+});
+</script>
+</body>
+</html>

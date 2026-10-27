@@ -4,8 +4,8 @@ import { setup } from './helpers.js';
 import { createApp } from '../src/server.js';
 
 test('HTTP: submit, read, and the reviewer gate needs the token', async (t) => {
-  const { config, service, audit } = setup();
-  const server = createApp({ config, service, audit }).listen(0);
+  const { config, service, audit, owner } = setup();
+  const server = createApp({ config, service, audit, owner }).listen(0);
   t.after(() => server.close());
   const base = `http://127.0.0.1:${server.address().port}`;
   const post = (path, body, headers = {}) => fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
@@ -21,6 +21,12 @@ test('HTTP: submit, read, and the reviewer gate needs the token', async (t) => {
   assert.equal((await fetch(`${base}/api/tasks`)).status, 403);
   assert.equal((await (await fetch(`${base}/api/tasks`, { headers: { 'x-review-token': 'reviewer-secret' } })).json()).length, 1);
   assert.equal((await fetch(`${base}/api/tasks/unknown`)).status, 404);
+  const ownerHeaders = { 'x-review-token': 'reviewer-secret' };
+  assert.equal((await fetch(`${base}/api/owner`)).status, 403);
+  assert.equal((await (await fetch(`${base}/api/owner`, { headers: ownerHeaders })).json()).receiver.mode, 'hd');
+  assert.equal((await post('/api/owner/wallet', { xpub: 'nope', path: 'receive' }, ownerHeaders)).status, 400);
+  assert.equal((await post('/api/owner/static-address', { address: 'bitcoincash:qqqq' }, ownerHeaders)).status, 400);
+  assert.equal((await fetch(base + '/owner')).status, 200);
   const auditView = await (await fetch(`${base}/api/audit`)).json();
   assert.deepEqual(auditView.verified, { ok: true });
   assert.equal((await fetch(base + '/')).headers.get('content-type'), 'text/html; charset=utf-8');

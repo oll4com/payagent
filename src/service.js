@@ -3,12 +3,15 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { decide } from './policy.js';
-import { taskAddress } from './chain.js';
 import { buildPaymentRequest, pathXpubs, paysTask } from './payment-builder.js';
+import { hdAddress } from './receiver.js';
 
 const PREVIEW_CHARS = 280;
+const GAP_LIMIT = 20; // BIP44: wallets stop looking after 20 unused addresses in a row
+const OPEN = ['ACCEPTED', 'WORKING', 'AWAITING_PAYMENT'];
+const unavailable = (message) => Object.assign(new Error(message), { status: 503 });
 
-export function createService({ config, audit, chain, agent, storePath }) {
+export function createService({ config, audit, chain, agent, storePath, owner }) {
   const tasks = existsSync(storePath) ? JSON.parse(readFileSync(storePath, 'utf8')) : {};
   const save = () => writeFileSync(storePath, JSON.stringify(tasks, null, 2));
   const get = (id) => {
@@ -22,11 +25,68 @@ export function createService({ config, audit, chain, agent, storePath }) {
     audit.append({ taskId: task.id, status, ...auditDetail });
   };
 
+  // HD wallet: the lowest free index at most GAP_LIMIT past the last paid one, so a wallet restored from its seed still finds
+  // every payment; an unpaid expired task's index is reused once its address is checked empty.
+  // Static address: every open task gets its own amount (price + 1..999 satoshis) to tell the payments apart.
+  async function assignReceiver(task) {
+    const receiver = owner.current();
+    if (!receiver) throw unavailable('the owner has not set up a receiving wallet yet');
+    const all = Object.values(tasks).filter((t) => t.id !== task.id);
+    for (const t of all.filter((t) => t.status === 'AWAITING_PAYMENT')) await settle(t);
+    if (receiver.mode === 'static') {
+      const taken = new Set(all.filter((t) => OPEN.includes(t.status) && t.address === receiver.address).map((t) => t.amountSats - t.priceSats));
+      const tag = Array.from({ length: 999 }, (_, i) => i + 1).find((n) => !taken.has(n));
+      if (!tag) throw unavailable('too many unpaid tasks are open; try again later');
+      return { mode: 'static', address: receiver.address, amountSats: task.priceSats + tag, sinceHeight: await chain.tipHeight() };
+    }
+    const same = all.filter((t) => t.receiver?.xpub === receiver.xpub);
+    const lastPaid = Math.max(-1, ...same.filter((t) => t.status === 'PAID').map((t) => t.receiver.index));
+    for (let index = 0; index <= lastPaid + GAP_LIMIT; index += 1) {
+      const earlier = same.filter((t) => t.receiver.index === index);
+      if (earlier.some((t) => OPEN.includes(t.status) || t.status === 'PAID')) continue;
+      const address = hdAddress(receiver, index, config.addressPrefix);
+      if (earlier.length && (await chain.receivedSats(address)) > 0) {
+        for (const t of earlier.filter((t) => t.status === 'EXPIRED')) await settle(t);
+        continue;
+      }
+      return { mode: 'hd', xpub: receiver.xpub, path: receiver.path, index, address, amountSats: task.priceSats };
+    }
+    throw unavailable('too many unpaid tasks are open; try again later');
+  }
+
+  // Marks a task PAID once its amount has arrived; an unpaid task expires after the payment window.
+  async function settle(task) {
+    if (!['AWAITING_PAYMENT', 'EXPIRED'].includes(task.status)) return;
+    let paid;
+    if (task.receiver.mode === 'hd') {
+      // An expired task's address may have gone to a newer task; then its late payments can't be told apart.
+      const reused = task.status === 'EXPIRED' && Object.values(tasks).some((t) => t !== task && t.receiver?.xpub === task.receiver.xpub && t.receiver.index === task.receiver.index && t.createdAt > task.createdAt);
+      if (reused) return;
+      const received = await chain.receivedSats(task.address);
+      if (received >= task.amountSats) paid = { receivedSats: received };
+    } else {
+      const claimed = new Set(Object.values(tasks).map((t) => t.paidOutpoint).filter(Boolean));
+      const utxo = (await chain.listUnspent(task.address)).find((u) =>
+        u.value === task.amountSats && !claimed.has(`${u.tx_hash}:${u.tx_pos}`) && (u.height <= 0 || u.height >= task.receiver.sinceHeight));
+      if (utxo) paid = { receivedSats: utxo.value, paidOutpoint: `${utxo.tx_hash}:${utxo.tx_pos}` };
+    }
+    if (paid) return move(task, 'PAID', { ...paid, auditDetail: { ...paid, late: task.status === 'EXPIRED' || undefined } });
+    if (task.status === 'AWAITING_PAYMENT' && Date.now() - Date.parse(task.awaitingSince) > config.paymentWindowHours * 3600_000) {
+      move(task, 'EXPIRED');
+    }
+  }
+
   async function run(task) {
+    try {
+      const receiver = await assignReceiver(task);
+      Object.assign(task, { receiver, address: receiver.address, amountSats: receiver.amountSats });
+    } catch (error) {
+      return move(task, 'FAILED', { error: error.message, auditDetail: { error: error.message } });
+    }
     move(task, 'WORKING');
     try {
       const result = String(await agent(task.description));
-      move(task, 'AWAITING_PAYMENT', { result, auditDetail: { resultChars: result.length } });
+      move(task, 'AWAITING_PAYMENT', { result, awaitingSince: new Date().toISOString(), auditDetail: { resultChars: result.length, amountSats: task.amountSats } });
     } catch (error) {
       move(task, 'FAILED', { error: error.message, auditDetail: { error: error.message } });
     }
@@ -38,13 +98,8 @@ export function createService({ config, audit, chain, agent, storePath }) {
       priceSats = Number(priceSats);
       if (!description || description.length > 4000) throw Object.assign(new Error('description must be 1-4000 characters'), { status: 400 });
       if (!Number.isSafeInteger(priceSats) || priceSats <= 0) throw Object.assign(new Error('priceSats must be a positive integer'), { status: 400 });
-      const index = Object.keys(tasks).length;
       const { decision, ruleId } = decide({ description, priceSats }, config);
-      const task = {
-        id: randomUUID(), index, description, priceSats,
-        address: taskAddress(config.hdPublicKey, index, config.addressPrefix),
-        createdAt: new Date().toISOString()
-      };
+      const task = { id: randomUUID(), description, priceSats, createdAt: new Date().toISOString() };
       tasks[task.id] = task;
       const status = { AUTO: 'ACCEPTED', APPROVE: 'NEEDS_APPROVAL', REFUSE: 'REFUSED' }[decision];
       move(task, status, { ruleId, auditDetail: { decision, ruleId, priceSats } });
@@ -61,12 +116,9 @@ export function createService({ config, audit, chain, agent, storePath }) {
       return this.view(id);
     },
 
-    // Reads the task's address; releases the result once the full price has arrived.
+    // Reads the task's address; releases the result once the full amount has arrived.
     async checkPayment(id) {
-      const task = get(id);
-      if (task.status !== 'AWAITING_PAYMENT') return this.view(id);
-      const received = await chain.receivedSats(task.address);
-      if (received >= task.priceSats) move(task, 'PAID', { receivedSats: received, auditDetail: { receivedSats: received } });
+      await settle(get(id));
       return this.view(id);
     },
 
@@ -89,13 +141,13 @@ export function createService({ config, audit, chain, agent, storePath }) {
     },
 
     view(id) {
-      const { result, ...task } = get(id);
+      const { result, receiver, paidOutpoint, ...task } = get(id);
       const paid = task.status === 'PAID';
       return {
         ...task,
         preview: result === undefined ? undefined : result.slice(0, PREVIEW_CHARS),
         result: paid ? result : undefined,
-        paymentUri: task.status === 'AWAITING_PAYMENT' ? `${task.address}?amount=${(task.priceSats / 1e8).toFixed(8)}` : undefined
+        paymentUri: task.status === 'AWAITING_PAYMENT' ? `${task.address}?amount=${(task.amountSats / 1e8).toFixed(8)}` : undefined
       };
     },
     list: () => Object.keys(tasks).map((id) => ({ id, status: tasks[id].status, priceSats: tasks[id].priceSats, createdAt: tasks[id].createdAt }))

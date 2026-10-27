@@ -3,7 +3,6 @@ const NETWORKS = { chipnet: 'bchtest', mainnet: 'bitcoincash' };
 export function loadConfig(env = process.env) {
   const network = env.NETWORK ?? 'chipnet';
   if (!NETWORKS[network]) throw new Error(`NETWORK must be one of ${Object.keys(NETWORKS).join(', ')}`);
-  if (!env.HD_PUBLIC_KEY) throw new Error('set HD_PUBLIC_KEY: the watch-only xpub/tpub of the wallet that receives payments');
   const sats = (name, fallback) => {
     const value = Number(env[name] ?? fallback);
     if (!Number.isSafeInteger(value) || value < 0) throw new Error(`${name} must be a non-negative integer`);
@@ -12,7 +11,11 @@ export function loadConfig(env = process.env) {
   return {
     network,
     addressPrefix: NETWORKS[network],
-    hdPublicKey: env.HD_PUBLIC_KEY,
+    // Defaults for the receiving wallet; the owner page can pair a wallet instead (DATA_DIR/owner.json wins).
+    hdPublicKey: env.HD_PUBLIC_KEY ?? '',
+    hdPublicKeyPath: env.HD_PUBLIC_KEY_PATH ?? 'account',
+    receiveAddress: env.RECEIVE_ADDRESS ?? '',
+    paymentWindowHours: sats('PAYMENT_WINDOW_HOURS', 24),
     electrumHost: env.ELECTRUM_HOST ?? (network === 'chipnet' ? 'chipnet.imaginary.cash' : 'bch.imaginary.cash'),
     minPriceSats: sats('MIN_PRICE_SATS', 1000),
     autoMaxSats: sats('AUTO_MAX_SATS', 50_000),
