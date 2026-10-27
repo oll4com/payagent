@@ -7,7 +7,7 @@
   "private": true,
   "scripts": {
     "start": "npm run build && node src/server.js",
-    "test": "node --test test/*.test.js",
+    "test": "node --test --test-force-exit test/*.test.js",
     "build": "esbuild web/wallet.js --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=public/wallet.bundle.js"
   },
   "engines": {

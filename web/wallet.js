@@ -2,7 +2,6 @@
 // the wallet's xpubs, have the wallet sign it, hand the signed transaction back to the server to check and broadcast.
 import { initiateDappRelay } from '@wizardconnect/core';
 import { DappConnectionManager } from '@wizardconnect/dapp';
-import { hexToBin } from '@bitauth/libauth';
 import qrcode from 'qrcode-generator';
 
 const post = async (path, body, base = '') => {
@@ -12,14 +11,9 @@ const post = async (path, body, base = '') => {
   return value;
 };
 
-// The server sends bytes as hex and satoshis as decimal strings; libauth wants Uint8Array and bigint.
-const reviveSourceOutput = (o) => ({
-  ...o,
-  outpointTransactionHash: hexToBin(o.outpointTransactionHash),
-  lockingBytecode: hexToBin(o.lockingBytecode),
-  unlockingBytecode: hexToBin(o.unlockingBytecode),
-  valueSatoshis: BigInt(o.valueSatoshis)
-});
+// WizardConnect's relay format (its sourceOutputToRelay, not exported): bytes as hex, satoshis as `<bigint: Xn>`.
+// The server already sends hex, so only the amount changes.
+const toRelay = (o) => ({ ...o, valueSatoshis: `<bigint: ${o.valueSatoshis}n>` });
 
 export function qrSvg(text) {
   const qr = qrcode(0, 'M');
@@ -33,8 +27,9 @@ async function connectWallet(onPairing) {
   const manager = new DappConnectionManager('Pay-per-task Agent', undefined, { session: false });
   const relay = initiateDappRelay((payload) => manager.updateConnection(payload.client, payload.status), {});
   manager.attachRelay(relay);
-  const close = () => {
-    manager.sendDisconnect('done').catch(() => {});
+  // Let the disconnect reach the relay before the sockets close, or the wallet keeps a dangling session.
+  const close = async () => {
+    await manager.sendDisconnect('done').catch(() => {});
     relay.cleanup();
     manager.destroy();
   };
@@ -45,7 +40,7 @@ async function connectWallet(onPairing) {
       manager.on('disconnect', (_, message) => reject(new Error(message ?? 'the wallet disconnected')));
     });
   } catch (error) {
-    close();
+    await close();
     throw error;
   }
   return { manager, close };
@@ -59,7 +54,7 @@ export async function pairWallet({ onPairing }) {
     if (!receive) throw new Error('the wallet did not share a receive path');
     return { xpub: receive.xpub, walletName: manager.walletName };
   } finally {
-    close();
+    await close();
   }
 }
 
@@ -73,7 +68,7 @@ export async function payWithWallet(taskId, { onPairing, onStatus, base = '' }) 
     const signed = await manager.signTransaction({
       transaction: {
         transaction: request.transaction,
-        sourceOutputs: request.sourceOutputs.map(reviveSourceOutput),
+        sourceOutputs: request.sourceOutputs.map(toRelay),
         userPrompt: request.userPrompt,
         broadcast: false
       },
@@ -83,6 +78,6 @@ export async function payWithWallet(taskId, { onPairing, onStatus, base = '' }) 
     onStatus('Sending the payment…');
     return await post(`/api/tasks/${taskId}/payment`, { signedTransaction: signed.signedTransaction }, base);
   } finally {
-    close();
+    await close();
   }
 }
