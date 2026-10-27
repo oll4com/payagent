@@ -26,6 +26,12 @@ for this task alone. Network: <span id="network">…</span>.</p>
   <button type="submit">Submit task</button>
 </form>
 <div id="task" class="card" hidden aria-live="polite"></div>
+<div id="wallet" hidden>
+  <p>Scan this code with a WizardConnect wallet (for example Selene or Paytaca):</p>
+  <div id="qr" style="max-width:16rem" role="img" aria-label="WizardConnect pairing code"></div>
+  <p><a id="wizlink">Open in a wallet on this device</a></p>
+  <p id="wallet-status" aria-live="polite"></p>
+</div>
 <p><a href="/api/audit">Audit log (hash-chained)</a></p>
 <script>
 const el = (id) => document.getElementById(id);
@@ -43,11 +49,33 @@ function render(t) {
   if (t.ruleId) add('p', `Policy rule: ${t.ruleId}`);
   if (t.preview && !t.result) { add('p', 'Preview:'); add('pre', t.preview); }
   if (t.paymentUri) {
-    add('p', `Pay ${t.priceSats} satoshis to unlock the full result:`);
+    add('p', `Pay ${t.priceSats} satoshis to unlock the full result.`);
+    const pay = add('button', 'Pay with a WizardConnect wallet');
+    pay.type = 'button';
+    pay.addEventListener('click', () => walletPay(t.id));
+    add('p', 'Or send the exact amount from any wallet:');
     const a = add('a', t.paymentUri); a.href = t.paymentUri;
   }
   if (t.result) { add('p', 'Result:'); add('pre', t.result); }
   if (t.error) add('p', `Error: ${t.error}`);
+}
+async function walletPay(id) {
+  clearInterval(timer);
+  const { payWithWallet, qrSvg } = await import('/wallet.bundle.js');
+  const status = (text) => { el('wallet-status').textContent = text; };
+  el('wallet').hidden = false;
+  try {
+    const t = await payWithWallet(id, {
+      onPairing: (uri, qrUri) => { el('qr').innerHTML = qrSvg(qrUri); el('wizlink').href = uri; status('Waiting for your wallet…'); },
+      onStatus: status
+    });
+    el('wallet').hidden = true;
+    render(t);
+    if (t.status !== 'PAID') timer = setInterval(() => poll(id), 5000);
+  } catch (error) {
+    status(`Payment not sent: ${error.message}`);
+    timer = setInterval(() => poll(id), 5000);
+  }
 }
 async function poll(id) {
   const t = await (await fetch(`/api/tasks/${id}/check`, { method: 'POST' })).json();

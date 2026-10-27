@@ -6,8 +6,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "node src/server.js",
-    "test": "node --test test/*.test.js"
+    "start": "npm run build && node src/server.js",
+    "test": "node --test test/*.test.js",
+    "build": "esbuild web/wallet.js --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=public/wallet.bundle.js"
   },
   "engines": {
     "node": ">=22"
@@ -15,6 +16,10 @@
   "dependencies": {
     "@bitauth/libauth": "^3.0.0",
     "@electrum-cash/network": "^4.4.8",
-    "@wizardconnect/dapp": "^0.2.2"
+    "@wizardconnect/dapp": "^0.2.2",
+    "qrcode-generator": "^2.0.4"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

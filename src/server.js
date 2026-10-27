@@ -39,6 +39,10 @@ export function createApp({ config, service, audit }) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         return res.end(page);
       }
+      if (req.method === 'GET' && pathname === '/wallet.bundle.js') {
+        res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
+        return res.end(readFileSync(new URL('../public/wallet.bundle.js', import.meta.url)));
+      }
       if (api !== 'api') return send(404, { error: 'not found' });
       if (resource === 'config' && req.method === 'GET') {
         return send(200, { network: config.network, minPriceSats: config.minPriceSats, autoMaxSats: config.autoMaxSats, maxPriceSats: config.maxPriceSats });
