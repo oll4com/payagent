@@ -81,6 +81,17 @@ export function createService({ config, audit, chain, agent, storePath, owner })
     }
   }
 
+  // Tokens the model reported for tasks worked today (UTC), from the stored tasks, so a restart forgets nothing.
+  const tokensToday = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    return Object.values(tasks).reduce((sum, t) => sum + (t.workedAt?.startsWith(today) ? t.agentTokens ?? 0 : 0), 0);
+  };
+  const assertBudget = () => {
+    if (config.agentDailyTokens > 0 && tokensToday() >= config.agentDailyTokens) {
+      throw unavailable("the demo's model budget for today is used up; try again after 00:00 UTC");
+    }
+  };
+
   async function run(task) {
     try {
       const receiver = await assignReceiver(task);
@@ -90,8 +101,14 @@ export function createService({ config, audit, chain, agent, storePath, owner })
     }
     move(task, 'WORKING');
     try {
-      const result = String(await agent(task.description));
-      move(task, 'AWAITING_PAYMENT', { result, awaitingSince: new Date().toISOString(), auditDetail: { resultChars: result.length, amountSats: task.amountSats } });
+      const answer = await agent(task.description);
+      const { text, tokens = 0 } = typeof answer === 'string' ? { text: answer } : answer;
+      const result = String(text);
+      const now = new Date().toISOString();
+      move(task, 'AWAITING_PAYMENT', {
+        result, awaitingSince: now, workedAt: now, agentTokens: tokens,
+        auditDetail: { resultChars: result.length, tokens, amountSats: task.amountSats }
+      });
     } catch (error) {
       move(task, 'FAILED', { error: error.message, auditDetail: { error: error.message } });
     }
@@ -104,6 +121,7 @@ export function createService({ config, audit, chain, agent, storePath, owner })
       if (!description || description.length > 4000) throw Object.assign(new Error('description must be 1-4000 characters'), { status: 400 });
       if (!Number.isSafeInteger(priceSats) || priceSats <= 0) throw Object.assign(new Error('priceSats must be a positive integer'), { status: 400 });
       const { decision, ruleId } = decide({ description, priceSats }, config);
+      if (decision === 'AUTO') assertBudget();
       const task = { id: randomUUID(), description, priceSats, createdAt: new Date().toISOString() };
       tasks[task.id] = task;
       const status = { AUTO: 'ACCEPTED', APPROVE: 'NEEDS_APPROVAL', REFUSE: 'REFUSED' }[decision];
@@ -116,6 +134,7 @@ export function createService({ config, audit, chain, agent, storePath, owner })
     async review(id, approve, reviewer) {
       const task = get(id);
       if (task.status !== 'NEEDS_APPROVAL') throw Object.assign(new Error(`task is ${task.status}`), { status: 409 });
+      if (approve) assertBudget();
       move(task, approve ? 'ACCEPTED' : 'DECLINED', { auditDetail: { reviewer } });
       if (approve) await run(task);
       return this.view(id);

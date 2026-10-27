@@ -56,9 +56,20 @@ async function poll(id) {
 el('submit').addEventListener('submit', async (e) => {
   e.preventDefault();
   clearInterval(timer);
-  const r = await fetch('/api/tasks', { method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ description: el('description').value, priceSats: Number(el('price').value) }) });
-  const t = await r.json();
+  const button = e.submitter ?? el('submit').querySelector('button[type=submit]');
+  button.disabled = true;
+  render({ status: 'WORKING' });
+  let r, t;
+  try {
+    r = await fetch('/api/tasks', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ description: el('description').value, priceSats: Number(el('price').value) }) });
+    t = await r.json();
+  } catch {
+    r = { ok: false };
+    t = { error: 'the server could not be reached; try again' };
+  } finally {
+    button.disabled = false;
+  }
   if (!r.ok) return render({ status: 'ERROR', error: t.error });
   render(t);
   timer = setInterval(() => poll(t.id), 5000);

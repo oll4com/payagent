@@ -22,6 +22,8 @@ export function loadConfig(env = process.env) {
     trustProxy: env.TRUST_PROXY === '1',
     tasksPerDay: sats('TASKS_PER_DAY', 200),
     agentMaxTokens: sats('AGENT_MAX_TOKENS', 800),
+    // Tokens the model may use per UTC day across all tasks (0 = no budget); new tasks are refused once it is used up.
+    agentDailyTokens: sats('AGENT_DAILY_TOKENS', 0),
     electrumHost: env.ELECTRUM_HOST ?? (network === 'chipnet' ? 'chipnet.imaginary.cash' : 'bch.imaginary.cash'),
     minPriceSats: sats('MIN_PRICE_SATS', 1000),
     autoMaxSats: sats('AUTO_MAX_SATS', 50_000),
