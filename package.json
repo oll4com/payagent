@@ -1,0 +1,19 @@
+{
+  "name": "pay-per-task-agent",
+  "version": "0.1.0",
+  "description": "An AI agent paid per finished task in Bitcoin Cash, with a human approval gate and an append-only audit log.",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@bitauth/libauth": "^3.0.0",
+    "@electrum-cash/network": "^4.4.8"
+  }
+}

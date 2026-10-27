@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pay-per-task Agent</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; color: #1b1b1f; }
+  label { display: block; margin-top: 1rem; font-weight: 600; }
+  textarea, input { width: 100%; box-sizing: border-box; font: inherit; padding: .5rem; }
+  button { margin-top: 1rem; font: inherit; padding: .5rem 1rem; }
+  .card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-top: 1.5rem; }
+  pre { white-space: pre-wrap; background: #f5f5f7; padding: .75rem; border-radius: 6px; }
+  .status { font-weight: 700; }
+</style>
+</head>
+<body>
+<h1>Pay-per-task Agent</h1>
+<p>Describe a task and the price you offer. A policy decides whether the agent runs it at once, waits for a person to accept it,
+or refuses. You see a preview of the finished work first and pay only if you want the full result: payment goes to an address made
+for this task alone. Network: <span id="network">…</span>.</p>
+<form id="submit">
+  <label for="description">Task</label>
+  <textarea id="description" rows="5" required maxlength="4000"></textarea>
+  <label for="price">Price (satoshis)</label>
+  <input id="price" type="number" min="1" step="1" required>
+  <button type="submit">Submit task</button>
+</form>
+<div id="task" class="card" hidden aria-live="polite"></div>
+<p><a href="/api/audit">Audit log (hash-chained)</a></p>
+<script>
+const el = (id) => document.getElementById(id);
+let timer;
+fetch('/api/config').then((r) => r.json()).then((c) => {
+  el('network').textContent = c.network;
+  el('price').value = c.minPriceSats;
+  el('price').min = c.minPriceSats; el('price').max = c.maxPriceSats;
+});
+function render(t) {
+  const box = el('task'); box.hidden = false;
+  box.replaceChildren();
+  const add = (tag, text) => { const n = document.createElement(tag); n.textContent = text; box.append(n); return n; };
+  add('p', 'Status: ').append(Object.assign(document.createElement('span'), { className: 'status', textContent: t.status }));
+  if (t.ruleId) add('p', `Policy rule: ${t.ruleId}`);
+  if (t.preview && !t.result) { add('p', 'Preview:'); add('pre', t.preview); }
+  if (t.paymentUri) {
+    add('p', `Pay ${t.priceSats} satoshis to unlock the full result:`);
+    const a = add('a', t.paymentUri); a.href = t.paymentUri;
+  }
+  if (t.result) { add('p', 'Result:'); add('pre', t.result); }
+  if (t.error) add('p', `Error: ${t.error}`);
+}
+async function poll(id) {
+  const t = await (await fetch(`/api/tasks/${id}/check`, { method: 'POST' })).json();
+  render(t);
+  if (['PAID', 'REFUSED', 'DECLINED', 'FAILED'].includes(t.status)) clearInterval(timer);
+}
+el('submit').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearInterval(timer);
+  const r = await fetch('/api/tasks', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ description: el('description').value, priceSats: Number(el('price').value) }) });
+  const t = await r.json();
+  if (!r.ok) return render({ status: 'ERROR', error: t.error });
+  render(t);
+  timer = setInterval(() => poll(t.id), 5000);
+});
+</script>
+</body>
+</html>
