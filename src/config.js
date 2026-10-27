@@ -22,6 +22,8 @@ export function loadConfig(env = process.env) {
     maxPriceSats: sats('MAX_PRICE_SATS', 1_000_000),
     autoMaxChars: sats('AUTO_MAX_CHARS', 1000),
     reviewToken: env.REVIEW_TOKEN ?? '',
+    repoUrl: env.REPO_URL ?? '',
+    donationAddress: env.DONATION_ADDRESS ?? '',
     port: sats('PORT', 8787),
     dataDir: env.DATA_DIR ?? 'data'
   };

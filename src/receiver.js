@@ -1,6 +1,6 @@
 // Where customers pay. The owner's wallet is either an HD public key (one fresh address per task, the server holds no
 // private key) or, as a fallback, one static receive address where each task gets a unique amount instead.
-import { cashAddressToLockingBytecode, decodeHdPublicKey, hdPublicKeyToP2pkhCashAddress } from '@bitauth/libauth';
+import { cashAddressToLockingBytecode, decodeCashAddress, decodeHdPublicKey, encodeCashAddress, hdPublicKeyToP2pkhCashAddress } from '@bitauth/libauth';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const NETWORK_OF = { chipnet: 'testnet', mainnet: 'mainnet' };
@@ -42,4 +42,11 @@ export function createOwnerStore(path, config) {
     },
     save(update) { writeFileSync(path, JSON.stringify({ ...read(), ...update }, null, 2), { mode: 0o600 }); }
   };
+}
+
+// BLAZE's EMBER2026 votes are CashTokens: the same key's token-aware address (z…) receives them.
+export function tokenAddress(address) {
+  const decoded = decodeCashAddress(address);
+  if (typeof decoded === 'string' || decoded.type !== 'p2pkh') return null;
+  return encodeCashAddress({ prefix: decoded.prefix, type: 'p2pkhWithTokens', payload: decoded.payload }).address;
 }

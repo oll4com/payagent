@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { setup } from './helpers.js';
+import { setup, testHdPublicKey } from './helpers.js';
+import { hdAddress } from '../src/receiver.js';
+const ownerTestAddress = hdAddress({ xpub: testHdPublicKey(), path: 'account' }, 0, 'bchtest');
 import { createApp } from '../src/server.js';
 
 test('HTTP: submit, read, and the reviewer gate needs the token', async (t) => {
@@ -27,6 +29,11 @@ test('HTTP: submit, read, and the reviewer gate needs the token', async (t) => {
   assert.equal((await post('/api/owner/wallet', { xpub: 'nope', path: 'receive' }, ownerHeaders)).status, 400);
   assert.equal((await post('/api/owner/static-address', { address: 'bitcoincash:qqqq' }, ownerHeaders)).status, 400);
   assert.equal((await fetch(base + '/owner')).status, 200);
+  assert.equal((await fetch(base + '/presentation')).status, 200);
+  assert.equal((await (await fetch(base + '/api/config')).json()).donationAddress, null, 'no static address yet: placeholder');
+  assert.equal((await post('/api/owner/static-address', { address: ownerTestAddress }, ownerHeaders)).status, 200);
+  const config2 = await (await fetch(base + '/api/config')).json();
+  assert.equal(config2.donationAddress, null, 'an xpub wins as receiver, so the donation address stays a placeholder');
   const auditView = await (await fetch(`${base}/api/audit`)).json();
   assert.deepEqual(auditView.verified, { ok: true });
   assert.equal((await fetch(base + '/')).headers.get('content-type'), 'text/html; charset=utf-8');

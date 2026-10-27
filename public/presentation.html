@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pay-per-task Agent · BCH BLAZE 2026</title>
+<style>
+  :root { --green: #0ac18e; --ink: #14161a; }
+  body { margin: 0; font: 18px/1.5 system-ui, sans-serif; color: var(--ink); background: #eef1f4; }
+  section { box-sizing: border-box; max-width: 960px; min-height: 540px; margin: 2rem auto; padding: 3rem 3.5rem; background: #fff;
+    border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.08); display: flex; flex-direction: column; justify-content: center; }
+  h1 { font-size: 3rem; margin: 0 0 .5rem; } h2 { font-size: 2rem; margin: 0 0 1rem; color: var(--green); }
+  .tag { font-size: 1.4rem; } .small { color: #555; font-size: 1rem; } li { margin: .35rem 0; }
+  a { color: #0a7d5e; } code { background: #f2f4f6; padding: 0 .3rem; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+<section aria-label="Slide 1 of 6">
+  <h1>Pay-per-task Agent</h1>
+  <p class="tag">An AI agent you pay per finished task in Bitcoin Cash, after you have seen the work.</p>
+  <p>Demo: <a id="site" href="/">this site</a> · Source code: <a id="repo">link on the home page banner</a></p>
+  <p class="small">Team: Nikolaos Theodoropoulos (solo), Bangkok. Built for BCH BLAZE 2026, Mainnet track.</p>
+</section>
+<section aria-label="Slide 2 of 6">
+  <h2>The story</h2>
+  <p>I run many AI coding agents every day in SpaceApp, the open-source agent workspace I build. The hard part is never getting an
+  agent to work: it is deciding what it may do without a person, and paying for exactly the work that was useful.</p>
+  <p>Subscriptions charge whether the answer was good or not. So I asked: what if each task were paid on its own, only after the
+  customer has seen it, with Bitcoin Cash fees small enough for a single answer?</p>
+</section>
+<section aria-label="Slide 3 of 6">
+  <h2>Benefits</h2>
+  <ul>
+    <li>Pay per task, not per month: see a preview first, pay only for what you keep.</li>
+    <li>A policy decides every task before the agent runs: run now, wait for a person, or refuse (rule id recorded).</li>
+    <li>Every step lands in an append-only, hash-chained audit log anyone can verify (<code>/api/audit</code>).</li>
+    <li>No accounts and no card: one QR scan with a WizardConnect wallet.</li>
+    <li>The shop never holds a private key: it only knows the wallet's public key.</li>
+  </ul>
+</section>
+<section aria-label="Slide 4 of 6">
+  <h2>BCH usage</h2>
+  <ul>
+    <li>Every task gets its own receiving address, derived from the shop wallet's xpub (BIP44, gap limit respected).</li>
+    <li>The customer pays with WizardConnect: the shop builds the exact transaction, the wallet signs it
+      (SIGHASH_ALL | FORKID | UTXOS), the shop checks it pays the task in full and broadcasts it.</li>
+    <li>0-conf release: the result unlocks as soon as the payment is seen.</li>
+    <li>Tested end to end on chipnet: txid <code>112d9b75…14805935</code> (27 Oct 2026).</li>
+  </ul>
+</section>
+<section aria-label="Slide 5 of 6">
+  <h2>The vision</h2>
+  <ul>
+    <li>Mainnet with the owner's own wallet, paired once by QR.</li>
+    <li>Many agents, one shop: each agent sets its price and its policy.</li>
+    <li>Agents paying agents: one agent buys a sub-task from another, each payment checked and logged the same way.</li>
+    <li>Receipts as CashTokens, so a customer can prove what they paid for.</li>
+  </ul>
+</section>
+<section aria-label="Slide 6 of 6">
+  <h1>Thank you!</h1>
+  <p class="tag">Try it: describe a task, see the preview, pay only if you want it.</p>
+</section>
+</main>
+<script>
+fetch('/api/config').then((r) => r.json()).then((c) => {
+  if (c.repoUrl) { const a = document.getElementById('repo'); a.href = c.repoUrl; a.textContent = c.repoUrl; }
+});
+</script>
+</body>
+</html>

@@ -11,9 +11,18 @@
   .card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-top: 1.5rem; }
   pre { white-space: pre-wrap; background: #f5f5f7; padding: .75rem; border-radius: 6px; }
   .status { font-weight: 700; }
+  .banner { background: #e6f9f2; border: 1px solid #0ac18e; border-radius: 8px; padding: .75rem 1rem; margin-bottom: 1.5rem; }
+  .banner code { word-break: break-all; }
 </style>
 </head>
 <body>
+<aside class="banner" aria-label="BCH BLAZE 2026">
+  <strong>BCH BLAZE 2026 entry</strong> ·
+  <a href="/presentation">Presentation</a> ·
+  <span id="repo-link">Source code: coming soon</span> ·
+  EMBER2026 donations: <code id="donation">address coming soon</code>
+  <br><small>Built for BLAZE: development started 27 Oct 2026; there is no earlier version.</small>
+</aside>
 <h1>Pay-per-task Agent</h1>
 <p>Describe a task and the price you offer. A policy decides whether the agent runs it at once, waits for a person to accept it,
 or refuses. You see a preview of the finished work first and pay only if you want the full result: payment goes to an address made
@@ -38,6 +47,11 @@ const el = (id) => document.getElementById(id);
 let timer;
 fetch('/api/config').then((r) => r.json()).then((c) => {
   el('network').textContent = c.network;
+  if (c.repoUrl) {
+    const a = Object.assign(document.createElement('a'), { href: c.repoUrl, textContent: 'Source code' });
+    el('repo-link').replaceChildren(a);
+  }
+  if (c.donationAddress) el('donation').textContent = c.donationAddress;
   el('price').value = c.minPriceSats;
   el('price').min = c.minPriceSats; el('price').max = c.maxPriceSats;
 });

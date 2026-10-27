@@ -7,13 +7,14 @@ import { createAuditLog, verifyChain } from './audit.js';
 import { createElectrumChain } from './chain.js';
 import { createAgent } from './agent.js';
 import { createService } from './service.js';
-import { checkAddress, checkXpub, createOwnerStore } from './receiver.js';
+import { checkAddress, checkXpub, createOwnerStore, tokenAddress } from './receiver.js';
 
 const MAX_BODY = 256 * 1024; // a signed transaction with many inputs
 
 export function createApp({ config, service, audit, owner }) {
   const page = readFileSync(new URL('../public/index.html', import.meta.url));
   const ownerPage = readFileSync(new URL('../public/owner.html', import.meta.url));
+  const deck = readFileSync(new URL('../public/presentation.html', import.meta.url));
   const isReviewer = (req) => {
     const given = Buffer.from(String(req.headers['x-review-token'] ?? ''));
     const want = Buffer.from(config.reviewToken);
@@ -41,6 +42,10 @@ export function createApp({ config, service, audit, owner }) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         return res.end(page);
       }
+      if (req.method === 'GET' && pathname === '/presentation') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end(deck);
+      }
       if (req.method === 'GET' && pathname === '/owner') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         return res.end(ownerPage);
@@ -51,7 +56,13 @@ export function createApp({ config, service, audit, owner }) {
       }
       if (api !== 'api') return send(404, { error: 'not found' });
       if (resource === 'config' && req.method === 'GET') {
-        return send(200, { network: config.network, minPriceSats: config.minPriceSats, autoMaxSats: config.autoMaxSats, maxPriceSats: config.maxPriceSats });
+        // Donations (BLAZE community votes) go to the owner's static address in its token-aware form until one is set explicitly.
+        const r = owner.current();
+        const donation = config.donationAddress || (r?.mode === 'static' ? tokenAddress(r.address) : null);
+        return send(200, {
+          network: config.network, minPriceSats: config.minPriceSats, autoMaxSats: config.autoMaxSats, maxPriceSats: config.maxPriceSats,
+          repoUrl: config.repoUrl || null, donationAddress: donation
+        });
       }
       if (resource === 'audit' && req.method === 'GET') {
         const entries = audit.read();

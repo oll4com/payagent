@@ -82,3 +82,11 @@ test('the owner store: a paired wallet wins over the environment; keys and addre
   assert.throws(() => checkXpub(paired, 'change', 'chipnet'), /account or receive/);
   assert.throws(() => checkAddress('bitcoincash:qqqq', 'bchtest'), /not a cash address|bitcoincash/);
 });
+
+test('the donation address is the token-aware form of a p2pkh address', async () => {
+  const { tokenAddress } = await import('../src/receiver.js');
+  const p2pkh = hdAddress({ xpub: testHdPublicKey(), path: 'account' }, 0, 'bchtest');
+  const z = tokenAddress(p2pkh);
+  assert.match(z, /^bchtest:z/);
+  assert.equal(tokenAddress(z), null, 'already token-aware: not p2pkh');
+});
