@@ -23,8 +23,16 @@ Open http://localhost:8787. Reviewers accept held tasks with `POST /api/tasks/<i
 `AGENT_MODE=echo` replaces the model with a test echo. `NETWORK=mainnet` switches to mainnet addresses and `bch.imaginary.cash`.
 
 ## Test
-`npm test` (policy, audit chain tampering, the task flow against a fake chain, the HTTP reviewer gate);
-`CHIPNET_LIVE=1 npm test` also reads a fresh address on chipnet.
+`npm test`: policy, audit chain tampering, address allocation (gap limit, reuse, static fallback), the payment builder, a
+WizardConnect-style signature checked by the BCH virtual machine, the HTTP and owner routes.
+Opt-in, with network: `RELAY_E2E=1` pairs and pays over the public WizardConnect relays; `CHIPNET_E2E=1` does the whole payment on
+chipnet with a test-only wallet whose seed stays in `data/` (first passed 27/10/2026, txid
+112d9b7577f80d8c291063a46cd85458095a3cbe0969dbd8b01abc1114805935); `CHIPNET_LIVE=1` reads a fresh address on chipnet.
+
+## Receiving wallet
+Open `/owner` with the reviewer token and pair a WizardConnect wallet (it shares only its receive xpub), or set one receive address
+as a fallback (each task then gets a unique amount). `HD_PUBLIC_KEY` (+ `HD_PUBLIC_KEY_PATH=account|receive`) or `RECEIVE_ADDRESS`
+set the same from the environment.
 
 ## Not done yet
-WizardConnect wallet connection, the hosted demo and the BLAZE banner (presentation, repository, CashTokens address).
+The hosted demo and the BLAZE banner (presentation, repository, CashTokens address).
