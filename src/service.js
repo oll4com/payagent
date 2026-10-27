@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { decide } from './policy.js';
 import { taskAddress } from './chain.js';
+import { buildPaymentRequest, pathXpubs, paysTask } from './payment-builder.js';
 
 const PREVIEW_CHARS = 280;
 
@@ -67,6 +68,24 @@ export function createService({ config, audit, chain, agent, storePath }) {
       const received = await chain.receivedSats(task.address);
       if (received >= task.priceSats) move(task, 'PAID', { receivedSats: received, auditDetail: { receivedSats: received } });
       return this.view(id);
+    },
+
+    // WizardConnect: an unsigned payment from the customer's wallet for the wallet to sign.
+    async paymentRequest(id, paths) {
+      const task = get(id);
+      if (task.status !== 'AWAITING_PAYMENT') throw Object.assign(new Error(`task is ${task.status}`), { status: 409 });
+      return buildPaymentRequest({ xpubs: pathXpubs(paths), task, chain, prefix: config.addressPrefix });
+    },
+
+    async submitPayment(id, signedTransaction) {
+      const task = get(id);
+      if (task.status !== 'AWAITING_PAYMENT') throw Object.assign(new Error(`task is ${task.status}`), { status: 409 });
+      if (typeof signedTransaction !== 'string' || !/^[0-9a-f]{20,200000}$/i.test(signedTransaction) || !paysTask(signedTransaction, task)) {
+        throw Object.assign(new Error('the signed transaction does not pay this task in full'), { status: 400 });
+      }
+      const txid = await chain.broadcast(signedTransaction);
+      audit.append({ taskId: task.id, status: 'BROADCAST', txid });
+      return this.checkPayment(id);
     },
 
     view(id) {

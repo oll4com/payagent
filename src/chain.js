@@ -23,6 +23,16 @@ export function createElectrumChain(host) {
       if (result instanceof Error) throw result;
       return Number(result.confirmed ?? 0) + Number(result.unconfirmed ?? 0);
     },
+    async listUnspent(address) {
+      const result = await (await connected()).request('blockchain.address.listunspent', address);
+      if (result instanceof Error) throw result;
+      return result;
+    },
+    async broadcast(hex) {
+      const result = await (await connected()).request('blockchain.transaction.broadcast', hex);
+      if (result instanceof Error) throw Object.assign(new Error(`broadcast refused: ${result.message}`), { status: 422 });
+      return result;
+    },
     close: () => client?.disconnect()
   };
 }

@@ -8,7 +8,7 @@ import { createElectrumChain } from './chain.js';
 import { createAgent } from './agent.js';
 import { createService } from './service.js';
 
-const MAX_BODY = 16 * 1024;
+const MAX_BODY = 256 * 1024; // a signed transaction with many inputs
 
 export function createApp({ config, service, audit }) {
   const page = readFileSync(new URL('../public/index.html', import.meta.url));
@@ -29,7 +29,8 @@ export function createApp({ config, service, audit }) {
   return createServer(async (req, res) => {
     const send = (status, value) => {
       res.writeHead(status, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(value));
+      // Wallet requests carry bytes and satoshi bigints: bytes go as hex, bigints as decimal strings.
+      res.end(JSON.stringify(value, (_, v) => (typeof v === 'bigint' ? v.toString() : v instanceof Uint8Array ? Buffer.from(v).toString('hex') : v)));
     };
     try {
       const { pathname } = new URL(req.url, 'http://local');
@@ -52,6 +53,8 @@ export function createApp({ config, service, audit }) {
       if (!id && req.method === 'POST') return send(201, await service.submit(await body(req)));
       if (id && !action && req.method === 'GET') return send(200, service.view(id));
       if (action === 'check' && req.method === 'POST') return send(200, await service.checkPayment(id));
+      if (action === 'payment-request' && req.method === 'POST') return send(200, await service.paymentRequest(id, (await body(req)).paths));
+      if (action === 'payment' && req.method === 'POST') return send(200, await service.submitPayment(id, (await body(req)).signedTransaction));
       if (action === 'review' && req.method === 'POST') {
         if (!isReviewer(req)) return send(403, { error: 'reviewer token required' });
         const { approve, reviewer = 'reviewer' } = await body(req);
