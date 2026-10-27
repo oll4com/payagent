@@ -18,6 +18,7 @@ export function loadConfig(env = process.env) {
     paymentWindowHours: sats('PAYMENT_WINDOW_HOURS', 24),
     // Abuse limits for a public demo whose payments are free test coins: new tasks per client per hour and per day overall.
     tasksPerIpHour: sats('TASKS_PER_IP_HOUR', 5),
+    trustProxy: env.TRUST_PROXY === '1',
     tasksPerDay: sats('TASKS_PER_DAY', 200),
     agentMaxTokens: sats('AGENT_MAX_TOKENS', 800),
     electrumHost: env.ELECTRUM_HOST ?? (network === 'chipnet' ? 'chipnet.imaginary.cash' : 'bch.imaginary.cash'),

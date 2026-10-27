@@ -33,8 +33,8 @@ export function createApp({ config, service, audit, owner }) {
   const ownerPage = readFileSync(new URL('../public/owner.html', import.meta.url));
   const deck = readFileSync(new URL('../public/presentation.html', import.meta.url));
   const limitTask = createTaskLimiter(config);
-  // nginx on the same host sets X-Forwarded-For; any other caller is counted by its socket address.
-  const clientIp = (req) => (['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress) && req.headers['x-forwarded-for']?.split(',').pop().trim()) || req.socket.remoteAddress;
+  // Behind a reverse proxy (TRUST_PROXY=1, the port reachable only by the proxy) the client is the last X-Forwarded-For entry.
+  const clientIp = (req) => (config.trustProxy && req.headers['x-forwarded-for']?.split(',').pop().trim()) || req.socket.remoteAddress;
   const isReviewer = (req) => {
     const given = Buffer.from(String(req.headers['x-review-token'] ?? ''));
     const want = Buffer.from(config.reviewToken);

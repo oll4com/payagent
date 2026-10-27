@@ -34,6 +34,8 @@ test('HTTP: submit, read, and the reviewer gate needs the token', async (t) => {
   assert.equal((await post('/api/owner/static-address', { address: ownerTestAddress }, ownerHeaders)).status, 200);
   const config2 = await (await fetch(base + '/api/config')).json();
   assert.equal(config2.donationAddress, null, 'an xpub wins as receiver, so the donation address stays a placeholder');
+  for (let i = 0; i < 4; i += 1) await post('/api/tasks', { description: `fill ${i}`, priceSats: 2000 });
+  assert.equal((await post('/api/tasks', { description: 'sixth', priceSats: 2000 })).status, 429, 'without TRUST_PROXY the socket address counts');
   const auditView = await (await fetch(`${base}/api/audit`)).json();
   assert.deepEqual(auditView.verified, { ok: true });
   assert.equal((await fetch(base + '/')).headers.get('content-type'), 'text/html; charset=utf-8');
