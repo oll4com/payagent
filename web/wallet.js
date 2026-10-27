@@ -5,8 +5,8 @@ import { DappConnectionManager } from '@wizardconnect/dapp';
 import { hexToBin } from '@bitauth/libauth';
 import qrcode from 'qrcode-generator';
 
-const post = async (path, body) => {
-  const response = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+const post = async (path, body, base = '') => {
+  const response = await fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const value = await response.json();
   if (!response.ok) throw new Error(value.error ?? `request failed (${response.status})`);
   return value;
@@ -63,11 +63,12 @@ export async function pairWallet({ onPairing }) {
   }
 }
 
-export async function payWithWallet(taskId, { onPairing, onStatus }) {
+// `base` is the server origin (empty in the browser, where paths are relative).
+export async function payWithWallet(taskId, { onPairing, onStatus, base = '' }) {
   const { manager, close } = await connectWallet(onPairing);
   try {
     onStatus(`Connected to ${manager.walletName ?? 'your wallet'}. Preparing the payment…`);
-    const request = await post(`/api/tasks/${taskId}/payment-request`, { paths: manager.getSessionPaths() });
+    const request = await post(`/api/tasks/${taskId}/payment-request`, { paths: manager.getSessionPaths() }, base);
     onStatus('Approve the payment in your wallet.');
     const signed = await manager.signTransaction({
       transaction: {
@@ -80,7 +81,7 @@ export async function payWithWallet(taskId, { onPairing, onStatus }) {
     });
     if (signed.error) throw new Error(signed.error);
     onStatus('Sending the payment…');
-    return await post(`/api/tasks/${taskId}/payment`, { signedTransaction: signed.signedTransaction });
+    return await post(`/api/tasks/${taskId}/payment`, { signedTransaction: signed.signedTransaction }, base);
   } finally {
     close();
   }
