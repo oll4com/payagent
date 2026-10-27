@@ -41,8 +41,9 @@ chipnet with a test-only wallet whose seed stays in `data/` (first passed 27/10/
 ## Security
 Strict Content-Security-Policy (own scripts only; WebAssembly for the signing library; the two WizardConnect relays), no inline
 scripts, `nosniff`, no referrer, no framing. The public audit log names tasks only by a hash of their id (`ref` in the task view),
-because a task id unlocks its paid result. New tasks are limited per client per hour and per day, the model's answers by length,
-and chain reads per task to one every 3 s. On mainnet the echo test agent refuses to start.
+because a task id unlocks its paid result. New tasks are limited per client per hour and per day, and chain reads per task to one
+every 3 s. The model's spending has a daily token budget (`AGENT_DAILY_TOKENS`, counted from the usage the endpoint reports);
+answers are kept short by instruction and `AGENT_REASONING_EFFORT`, because some backends ignore every length parameter. On mainnet the echo test agent refuses to start.
 
 ## Receiving wallet
 Open `/owner` with the reviewer token and pair a WizardConnect wallet (it shares only its receive xpub), or set one receive address
