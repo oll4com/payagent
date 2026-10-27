@@ -44,6 +44,9 @@ test('HTTP: submit, read, and the reviewer gate needs the token', async (t) => {
   assert.equal(home.headers.get('x-content-type-options'), 'nosniff');
   assert.doesNotMatch(await home.text(), /<script>/, 'no inline script');
   for (const js of ['/app.js', '/owner.js', '/deck.js']) assert.equal((await fetch(base + js)).status, 200, js);
+  const head = await fetch(base + '/', { method: 'HEAD' });
+  assert.equal(head.status, 200);
+  assert.match(head.headers.get('content-security-policy'), /frame-ancestors 'none'/);
   assert.equal((await fetch(`${base}/api/config`)).headers.get('cache-control'), 'no-store');
   assert.equal((await fetch(`${base}/../src/server.js`)).status, 404);
 });

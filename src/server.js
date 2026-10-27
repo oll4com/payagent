@@ -92,11 +92,11 @@ export function createApp({ config, service, audit, owner }) {
     try {
       const { pathname } = new URL(req.url, 'http://local');
       const [, api, resource, id, action] = pathname.split('/');
-      if (req.method === 'GET' && Object.hasOwn(STATIC, pathname)) {
+      if ((req.method === 'GET' || req.method === 'HEAD') && Object.hasOwn(STATIC, pathname)) {
         const [name, type] = STATIC[pathname];
         const content = file(name);
-        res.writeHead(200, { ...SECURITY_HEADERS, 'content-type': type });
-        return res.end(content);
+        res.writeHead(200, { ...SECURITY_HEADERS, 'content-type': type, 'content-length': content.length });
+        return res.end(req.method === 'HEAD' ? undefined : content);
       }
       if (api !== 'api') return send(404, { error: 'not found' });
       if (resource === 'config' && req.method === 'GET') {
