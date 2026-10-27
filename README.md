@@ -1,7 +1,11 @@
 # Pay-per-task Agent
 
 An AI agent that is paid per finished task in Bitcoin Cash, with a human approval gate before every payment and an append-only
-audit log of each step. Built for BCH BLAZE 2026 (Mainnet track).
+audit log of each step.
+
+- **Live demo (chipnet, test coins only):** https://payagent.oll4.com:4951 · presentation: https://payagent.oll4.com:4951/presentation
+- **BCH BLAZE 2026 entry** (Mainnet track). Built for BLAZE: development started on 27 October 2026; there is no earlier version.
+- Pay with any WizardConnect wallet (for example Selene or Paytaca): scan the QR code, approve the payment in the wallet.
 
 ## How it works
 1. A customer describes a task and offers a price in satoshis.
@@ -14,13 +18,16 @@ audit log of each step. Built for BCH BLAZE 2026 (Mainnet track).
 6. Every step is written to a hash-chained log (`src/audit.js`, `GET /api/audit` verifies it); an edited log refuses new entries.
 
 ## Run (chipnet, test coins only)
+Node 22 or newer:
 ```
 npm install
-HD_PUBLIC_KEY=<tpub of a chipnet wallet> REVIEW_TOKEN=<long random secret> \
-AGENT_API_URL=<https://.../v1> AGENT_API_KEY=<key> AGENT_MODEL=<model> npm start
+REVIEW_TOKEN=<random secret, 24+ characters> AGENT_MODE=echo npm start
 ```
-Open http://localhost:8787. Reviewers accept held tasks with `POST /api/tasks/<id>/review` and header `x-review-token`.
-`AGENT_MODE=echo` replaces the model with a test echo. `NETWORK=mainnet` switches to mainnet addresses and `bch.imaginary.cash`.
+Open http://localhost:8787/owner, enter the token and pair a chipnet wallet (or set one receive address), then use
+http://localhost:8787. For a real model set `AGENT_API_URL` (an OpenAI-compatible `/v1` base), `AGENT_API_KEY` and `AGENT_MODEL`
+instead of `AGENT_MODE=echo`. Reviewers accept held tasks with `POST /api/tasks/<id>/review` and header `x-review-token`.
+`NETWORK=mainnet` switches to mainnet addresses and `bch.imaginary.cash`. A container: `docker build -t pay-per-task-agent .`
+(runs as a non-root user, data in the `/data` volume).
 
 ## Test
 `npm test`: policy, audit chain tampering, address allocation (gap limit, reuse, static fallback), the payment builder, a
