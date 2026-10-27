@@ -25,8 +25,8 @@ export function createService({ config, audit, chain, agent, storePath, owner })
     audit.append({ taskId: task.id, status, ...auditDetail });
   };
 
-  // HD wallet: the lowest free index at most GAP_LIMIT past the last paid one, so a wallet restored from its seed still finds
-  // every payment; an unpaid expired task's index is reused once its address is checked empty.
+  // HD wallet: the lowest never-used index at most GAP_LIMIT past the last used one, so a wallet restored from its seed still
+  // finds every payment; an unpaid expired task's index is reused only while its address has no transaction at all.
   // Static address: every open task gets its own amount (price + 1..999 satoshis) to tell the payments apart.
   async function assignReceiver(task) {
     const receiver = owner.current();
@@ -40,13 +40,16 @@ export function createService({ config, audit, chain, agent, storePath, owner })
       return { mode: 'static', address: receiver.address, amountSats: task.priceSats + tag, sinceHeight: await chain.tipHeight() };
     }
     const same = all.filter((t) => t.receiver?.xpub === receiver.xpub);
-    const lastPaid = Math.max(-1, ...same.filter((t) => t.status === 'PAID').map((t) => t.receiver.index));
-    for (let index = 0; index <= lastPaid + GAP_LIMIT; index += 1) {
+    let lastUsed = Math.max(-1, ...same.filter((t) => t.status === 'PAID').map((t) => t.receiver.index));
+    for (let index = 0; index <= lastUsed + GAP_LIMIT; index += 1) {
       const earlier = same.filter((t) => t.receiver.index === index);
       if (earlier.some((t) => OPEN.includes(t.status) || t.status === 'PAID')) continue;
       const address = hdAddress(receiver, index, config.addressPrefix);
-      if (earlier.length && (await chain.receivedSats(address)) > 0) {
+      // Only a never-used address is handed out: money that arrived before (a late payment, or the wallet's own use) must
+      // never count as this task's payment. A used address counts for the gap limit.
+      if (await chain.hasHistory(address)) {
         for (const t of earlier.filter((t) => t.status === 'EXPIRED')) await settle(t);
+        lastUsed = Math.max(lastUsed, index);
         continue;
       }
       return { mode: 'hd', xpub: receiver.xpub, path: receiver.path, index, address, amountSats: task.priceSats };

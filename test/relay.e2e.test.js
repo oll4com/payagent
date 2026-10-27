@@ -18,6 +18,7 @@ test('relay: the owner pairs the wallet, then a customer pays a task from it', {
     tipHeight: async () => 1000,
     listUnspent: async (a) => (a === funded ? [coin] : []),
     receivedSats: async (a) => ctx.received?.get(a) ?? 0,
+    hasHistory: async (a) => (ctx.received?.get(a) ?? 0) > 0,
     async broadcast(hex) {
       const tx = decodeTransaction(hexToBin(hex));
       const sourceOutputs = [{ ...tx.inputs[0], lockingBytecode: cashAddressToLockingBytecode(funded).bytecode, valueSatoshis: 50_000n }];

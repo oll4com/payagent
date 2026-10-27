@@ -25,7 +25,16 @@ test('a paid task moves the gap window on; an expired unpaid index is reused aft
   await new Promise((r) => setTimeout(r, 5));
   assert.equal((await service.checkPayment(second.id)).status, 'EXPIRED');
   const third = await service.submit({ description: 'third', priceSats: 2000 });
-  assert.equal(third.address, second.address, 'the expired, empty index is reused');
+  assert.equal(third.address, second.address, 'the expired, never-used index is reused');
+});
+
+test('an address that was ever used is never handed out, and counts as used for the gap limit', async () => {
+  const { service, config, pay } = setup();
+  const xpub = { xpub: config.hdPublicKey, path: 'receive' };
+  pay(hdAddress(xpub, 0, 'bchtest'), 1500);
+  const t = await service.submit({ description: 'fresh one', priceSats: 1000 });
+  assert.equal(t.address, hdAddress(xpub, 1, 'bchtest'));
+  assert.equal((await service.checkPayment(t.id)).status, 'AWAITING_PAYMENT');
 });
 
 test('a late payment to an expired task releases its result and its index is not reused', async () => {

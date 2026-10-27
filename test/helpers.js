@@ -19,6 +19,7 @@ export function setup({ agent = async (d) => `done: ${d}`, env = {} } = {}) {
   let height = 1000;
   const chain = {
     receivedSats: async (address) => received.get(address) ?? 0,
+    hasHistory: async (address) => (received.get(address) ?? 0) > 0 || (utxos.get(address) ?? []).length > 0,
     listUnspent: async (address) => utxos.get(address) ?? [],
     tipHeight: async () => height
   };

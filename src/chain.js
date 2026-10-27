@@ -22,6 +22,11 @@ export function createElectrumChain(host) {
       if (tip instanceof Error) throw tip;
       return tip.height;
     },
+    async hasHistory(address) {
+      const result = await (await connected()).request('blockchain.address.get_history', address);
+      if (result instanceof Error) throw result;
+      return result.length > 0;
+    },
     async listUnspent(address) {
       const result = await (await connected()).request('blockchain.address.listunspent', address);
       if (result instanceof Error) throw result;
