@@ -13,12 +13,13 @@ export const testHdPublicKey = () =>
 
 export function setup({ agent = async (d) => `done: ${d}`, env = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'ppta-'));
-  const config = loadConfig({ HD_PUBLIC_KEY: testHdPublicKey(), HD_PUBLIC_KEY_PATH: 'receive', REVIEW_TOKEN: 'reviewer-secret', DATA_DIR: dir, ...env });
+  const config = loadConfig({ HD_PUBLIC_KEY: testHdPublicKey(), HD_PUBLIC_KEY_PATH: 'receive', PAYMENT_RECHECK_MS: '0', REVIEW_TOKEN: 'reviewer-secret', DATA_DIR: dir, ...env });
   const received = new Map();
   const utxos = new Map();
   let height = 1000;
+  const reads = { count: 0 };
   const chain = {
-    receivedSats: async (address) => received.get(address) ?? 0,
+    receivedSats: async (address) => { reads.count += 1; return received.get(address) ?? 0; },
     hasHistory: async (address) => (received.get(address) ?? 0) > 0 || (utxos.get(address) ?? []).length > 0,
     listUnspent: async (address) => utxos.get(address) ?? [],
     tipHeight: async () => height
@@ -27,7 +28,7 @@ export function setup({ agent = async (d) => `done: ${d}`, env = {} } = {}) {
   const owner = createOwnerStore(join(dir, 'owner.json'), config);
   const service = createService({ config, audit, chain, agent, owner, storePath: join(dir, 'tasks.json') });
   return {
-    dir, config, audit, service, owner,
+    dir, config, audit, service, owner, reads,
     pay: (address, sats) => received.set(address, (received.get(address) ?? 0) + sats),
     utxo: (address, u) => utxos.set(address, [...(utxos.get(address) ?? []), u]),
     mine: (n = 1) => { height += n; }

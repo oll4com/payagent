@@ -20,8 +20,10 @@ export function loadTestWallet() {
   const chain = (path) => deriveHdPath(master, path);
   const xpub = (path) => encodeHdPublicKey({ network: 'testnet', node: deriveHdPublicNode(chain(path)) }).hdPublicKey;
   const paths = { receive: "m/44'/145'/0'/0", change: "m/44'/145'/0'/1" };
+  // Account 0 pays (the customer); account 1's receive chain is the deployed demo's shop xpub, account 2 a shop to pair in tests.
+  const accountPaths = (n) => [{ name: 'receive', xpub: xpub(`m/44'/145'/${n}'/0`) }, { name: 'change', xpub: xpub(`m/44'/145'/${n}'/1`) }];
   return {
-    // Account 0 pays (the customer); account 1's receive chain is the shop's receiving xpub.
+    accountPaths,
     customerPaths: Object.entries(paths).map(([name, path]) => ({ name, xpub: xpub(path) })),
     shopReceiveXpub: xpub("m/44'/145'/1'/0"),
     fundingAddress: hdPublicKeyToP2pkhCashAddress({ hdPublicKey: xpub(paths.receive), addressIndex: 0, prefix: 'bchtest' }).address,
@@ -45,14 +47,16 @@ export function loadTestWallet() {
   };
 }
 
-// The wallet side of WizardConnect, answering every sign request with the test wallet's signature.
-export function connectTestWallet(wallet, uri) {
+// The wallet side of WizardConnect, answering every sign request with the test wallet's signature (account 0 signs; another
+// account is only shared, as a shop wallet the owner pairs).
+export function connectTestWallet(wallet, uri, account = 0) {
+  const shared = wallet.accountPaths(account);
   const notUsed = () => { throw new Error('not used by the test wallet'); };
   const manager = new WalletConnectionManager({
     walletName: 'Chipnet test wallet', walletIcon: '',
     getRelayPrivateKey: (() => { const k = generateRandomBytes(32); return () => k; })(),
     getPublicKey: notUsed,
-    getXpub: (path) => wallet.customerPaths[path === 1 ? 1 : 0].xpub,
+    getXpub: (path) => shared[path === 1 ? 1 : 0].xpub,
     signTransaction: notUsed
   });
   manager.on('pendingSignRequest', ({ connectionId, request }) => {

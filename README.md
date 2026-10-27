@@ -32,9 +32,17 @@ instead of `AGENT_MODE=echo`. Reviewers accept held tasks with `POST /api/tasks/
 ## Test
 `npm test`: policy, audit chain tampering, address allocation (gap limit, reuse, static fallback), the payment builder, a
 WizardConnect-style signature checked by the BCH virtual machine, the HTTP and owner routes.
-Opt-in, with network: `RELAY_E2E=1` pairs and pays over the public WizardConnect relays; `CHIPNET_E2E=1` does the whole payment on
+Opt-in, with network: `BROWSER_E2E=1` drives the real pages in headless Chrome (system Chrome, `CHROME_PATH` to override) with
+their Content-Security-Policy on chipnet: the owner pairs a shop wallet on `/owner`, a customer pays a task with the WizardConnect
+button; `RELAY_E2E=1` pairs and pays over the public WizardConnect relays; `CHIPNET_E2E=1` does the whole payment on
 chipnet with a test-only wallet whose seed stays in `data/` (first passed 27/10/2026, txid
 112d9b7577f80d8c291063a46cd85458095a3cbe0969dbd8b01abc1114805935); `CHIPNET_LIVE=1` reads a fresh address on chipnet.
+
+## Security
+Strict Content-Security-Policy (own scripts only; WebAssembly for the signing library; the two WizardConnect relays), no inline
+scripts, `nosniff`, no referrer, no framing. The public audit log names tasks only by a hash of their id (`ref` in the task view),
+because a task id unlocks its paid result. New tasks are limited per client per hour and per day, the model's answers by length,
+and chain reads per task to one every 3 s. On mainnet the echo test agent refuses to start.
 
 ## Receiving wallet
 Open `/owner` with the reviewer token and pair a WizardConnect wallet (it shares only its receive xpub), or set one receive address

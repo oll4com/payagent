@@ -16,6 +16,7 @@ export function loadConfig(env = process.env) {
     hdPublicKeyPath: env.HD_PUBLIC_KEY_PATH ?? 'account',
     receiveAddress: env.RECEIVE_ADDRESS ?? '',
     paymentWindowHours: sats('PAYMENT_WINDOW_HOURS', 24),
+    paymentRecheckMs: sats('PAYMENT_RECHECK_MS', 3000),
     // Abuse limits for a public demo whose payments are free test coins: new tasks per client per hour and per day overall.
     tasksPerIpHour: sats('TASKS_PER_IP_HOUR', 5),
     trustProxy: env.TRUST_PROXY === '1',

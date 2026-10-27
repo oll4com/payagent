@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <title>Pay-per-task Agent · BCH BLAZE 2026</title>
 <style>
   :root { --green: #0ac18e; --ink: #14161a; }
@@ -62,10 +63,6 @@
   <p class="tag">Try it: describe a task, see the preview, pay only if you want it.</p>
 </section>
 </main>
-<script>
-fetch('/api/config').then((r) => r.json()).then((c) => {
-  if (c.repoUrl) { const a = document.getElementById('repo'); a.href = c.repoUrl; a.textContent = c.repoUrl; }
-});
-</script>
+<script src="/deck.js"></script>
 </body>
 </html>

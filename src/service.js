@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { decide } from './policy.js';
 import { buildPaymentRequest, pathXpubs, paysTask } from './payment-builder.js';
 import { hdAddress } from './receiver.js';
+import { taskRef } from './audit.js';
 
 const PREVIEW_CHARS = 280;
 const GAP_LIMIT = 20; // BIP44: wallets stop looking after 20 unused addresses in a row
@@ -12,6 +13,7 @@ const OPEN = ['ACCEPTED', 'WORKING', 'AWAITING_PAYMENT'];
 const unavailable = (message) => Object.assign(new Error(message), { status: 503 });
 
 export function createService({ config, audit, chain, agent, storePath, owner }) {
+  const lastRead = new Map();
   const tasks = existsSync(storePath) ? JSON.parse(readFileSync(storePath, 'utf8')) : {};
   const save = () => writeFileSync(storePath, JSON.stringify(tasks, null, 2));
   const get = (id) => {
@@ -22,7 +24,7 @@ export function createService({ config, audit, chain, agent, storePath, owner })
   const move = (task, status, { auditDetail, ...fields } = {}) => {
     Object.assign(task, fields, { status, updatedAt: new Date().toISOString() });
     save();
-    audit.append({ taskId: task.id, status, ...auditDetail });
+    audit.append({ task: taskRef(task.id), status, ...auditDetail });
   };
 
   // HD wallet: the lowest never-used index at most GAP_LIMIT past the last used one, so a wallet restored from its seed still
@@ -121,7 +123,13 @@ export function createService({ config, audit, chain, agent, storePath, owner })
 
     // Reads the task's address; releases the result once the full amount has arrived.
     async checkPayment(id) {
-      await settle(get(id));
+      const task = get(id);
+      const now = Date.now();
+      // A task's address is read from the chain at most once per interval, however often clients ask.
+      if (now - (lastRead.get(id) ?? 0) >= config.paymentRecheckMs) {
+        lastRead.set(id, now);
+        await settle(task);
+      }
       return this.view(id);
     },
 
@@ -139,7 +147,8 @@ export function createService({ config, audit, chain, agent, storePath, owner })
         throw Object.assign(new Error('the signed transaction does not pay this task in full'), { status: 400 });
       }
       const txid = await chain.broadcast(signedTransaction);
-      audit.append({ taskId: task.id, status: 'BROADCAST', txid });
+      audit.append({ task: taskRef(task.id), status: 'BROADCAST', txid });
+      lastRead.delete(task.id);
       return this.checkPayment(id);
     },
 
@@ -148,6 +157,7 @@ export function createService({ config, audit, chain, agent, storePath, owner })
       const paid = task.status === 'PAID';
       return {
         ...task,
+        ref: taskRef(task.id),
         preview: result === undefined ? undefined : result.slice(0, PREVIEW_CHARS),
         result: paid ? result : undefined,
         paymentUri: task.status === 'AWAITING_PAYMENT' ? `${task.address}?amount=${(task.amountSats / 1e8).toFixed(8)}` : undefined

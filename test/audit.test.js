@@ -18,3 +18,13 @@ test('the audit chain verifies, and any edit breaks it and blocks further append
   assert.deepEqual(verifyChain(audit.read()), { ok: false, brokenAt: 1 });
   assert.throws(() => createAuditLog(path), /broken/);
 });
+
+test('the public log never names a task id, only its reference', async () => {
+  const { service, audit } = setup();
+  const t = await service.submit({ description: 'Write a line', priceSats: 2000 });
+  const { taskRef } = await import('../src/audit.js');
+  const log = JSON.stringify(audit.read());
+  assert.equal(log.includes(t.id), false);
+  assert.equal(t.ref, taskRef(t.id));
+  assert.ok(audit.read().every((e) => e.task === t.ref));
+});

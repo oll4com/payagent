@@ -11,6 +11,31 @@ import { checkAddress, checkXpub, createOwnerStore, tokenAddress } from './recei
 
 const MAX_BODY = 256 * 1024; // a signed transaction with many inputs
 
+// The pages run only their own scripts; the wallet code needs WebAssembly (libauth's secp256k1) and the two WizardConnect relays.
+const SECURITY_HEADERS = {
+  'content-security-policy': [
+    "default-src 'self'", "script-src 'self' 'wasm-unsafe-eval'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data:",
+    "connect-src 'self' wss://relay.riften.net wss://relay.cauldron.quest", "object-src 'none'", "base-uri 'none'",
+    "form-action 'none'", "frame-ancestors 'none'"
+  ].join('; '),
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'no-referrer',
+  'x-frame-options': 'DENY',
+  'cross-origin-opener-policy': 'same-origin',
+  'permissions-policy': 'camera=(), microphone=(), geolocation=()'
+};
+const STATIC = {
+  '/': ['index.html', 'text/html; charset=utf-8'],
+  '/presentation': ['presentation.html', 'text/html; charset=utf-8'],
+  '/owner': ['owner.html', 'text/html; charset=utf-8'],
+  '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
+  '/owner.js': ['owner.js', 'text/javascript; charset=utf-8'],
+  '/deck.js': ['deck.js', 'text/javascript; charset=utf-8'],
+  '/wallet.bundle.js': ['wallet.bundle.js', 'text/javascript; charset=utf-8'],
+  '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
+  '/favicon.ico': ['favicon.svg', 'image/svg+xml']
+};
+
 // Fixed windows kept in memory: a restart forgets them, which only ever lets a few extra tasks through.
 export function createTaskLimiter({ tasksPerIpHour, tasksPerDay }, now = () => Date.now()) {
   const perIp = new Map();
@@ -28,10 +53,19 @@ export function createTaskLimiter({ tasksPerIpHour, tasksPerDay }, now = () => D
   };
 }
 
+// A paying customer on mainnet must never get the test agent's echo by accident.
+export function refuseEchoOnMainnet(config, env) {
+  if (config.network === 'mainnet' && env.AGENT_MODE === 'echo' && env.ALLOW_ECHO_ON_MAINNET !== '1') {
+    throw new Error('AGENT_MODE=echo is refused on mainnet (set ALLOW_ECHO_ON_MAINNET=1 only for a private test)');
+  }
+}
+
 export function createApp({ config, service, audit, owner }) {
-  const page = readFileSync(new URL('../public/index.html', import.meta.url));
-  const ownerPage = readFileSync(new URL('../public/owner.html', import.meta.url));
-  const deck = readFileSync(new URL('../public/presentation.html', import.meta.url));
+  const files = new Map();
+  const file = (name) => {
+    if (!files.has(name)) files.set(name, readFileSync(new URL(`../public/${name}`, import.meta.url)));
+    return files.get(name);
+  };
   const limitTask = createTaskLimiter(config);
   // Behind a reverse proxy (TRUST_PROXY=1, the port reachable only by the proxy) the client is the last X-Forwarded-For entry.
   const clientIp = (req) => (config.trustProxy && req.headers['x-forwarded-for']?.split(',').pop().trim()) || req.socket.remoteAddress;
@@ -51,28 +85,18 @@ export function createApp({ config, service, audit, owner }) {
 
   return createServer(async (req, res) => {
     const send = (status, value) => {
-      res.writeHead(status, { 'content-type': 'application/json' });
+      res.writeHead(status, { ...SECURITY_HEADERS, 'content-type': 'application/json', 'cache-control': 'no-store' });
       // Wallet requests carry bytes and satoshi bigints: bytes go as hex, bigints as decimal strings.
       res.end(JSON.stringify(value, (_, v) => (typeof v === 'bigint' ? v.toString() : v instanceof Uint8Array ? Buffer.from(v).toString('hex') : v)));
     };
     try {
       const { pathname } = new URL(req.url, 'http://local');
       const [, api, resource, id, action] = pathname.split('/');
-      if (req.method === 'GET' && pathname === '/') {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        return res.end(page);
-      }
-      if (req.method === 'GET' && pathname === '/presentation') {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        return res.end(deck);
-      }
-      if (req.method === 'GET' && pathname === '/owner') {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        return res.end(ownerPage);
-      }
-      if (req.method === 'GET' && pathname === '/wallet.bundle.js') {
-        res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
-        return res.end(readFileSync(new URL('../public/wallet.bundle.js', import.meta.url)));
+      if (req.method === 'GET' && Object.hasOwn(STATIC, pathname)) {
+        const [name, type] = STATIC[pathname];
+        const content = file(name);
+        res.writeHead(200, { ...SECURITY_HEADERS, 'content-type': type });
+        return res.end(content);
       }
       if (api !== 'api') return send(404, { error: 'not found' });
       if (resource === 'config' && req.method === 'GET') {
@@ -140,6 +164,7 @@ export function createApp({ config, service, audit, owner }) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const config = loadConfig();
+  refuseEchoOnMainnet(config, process.env);
   if (config.hdPublicKey) checkXpub(config.hdPublicKey, config.hdPublicKeyPath, config.network);
   if (config.receiveAddress) config.receiveAddress = checkAddress(config.receiveAddress, config.addressPrefix);
   if (!config.reviewToken || config.reviewToken.length < 24) throw new Error('set REVIEW_TOKEN to a random secret of 24+ characters');

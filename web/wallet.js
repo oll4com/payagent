@@ -25,16 +25,26 @@ export function qrSvg(text) {
 // Opens a WizardConnect session and resolves once the wallet is ready; the caller always ends it with close().
 async function connectWallet(onPairing) {
   const manager = new DappConnectionManager('Pay-per-task Agent', undefined, { session: false });
-  const relay = initiateDappRelay((payload) => manager.updateConnection(payload.client, payload.status), {});
+  let live;
+  const relayLive = new Promise((resolve) => { live = resolve; });
+  const relay = initiateDappRelay((payload) => {
+    manager.updateConnection(payload.client, payload.status);
+    if (payload.status.status === 'connected') live();
+  }, {});
   manager.attachRelay(relay);
   // Let the disconnect reach the relay before the sockets close, or the wallet keeps a dangling session.
   const close = async () => {
     await manager.sendDisconnect('done').catch(() => {});
+    manager.destroy(); // stops its pings before the sockets close
     relay.cleanup();
-    manager.destroy();
   };
-  onPairing(relay.uri, relay.qrUri);
   try {
+    // The code is shown only once our relay subscription is live: a wallet that connected earlier could miss us.
+    let timer;
+    await Promise.race([relayLive, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('the WizardConnect relays did not answer')), 20_000);
+    })]).finally(() => clearTimeout(timer));
+    onPairing(relay.uri, relay.qrUri);
     await new Promise((resolve, reject) => {
       manager.on('walletready', resolve);
       manager.on('disconnect', (_, message) => reject(new Error(message ?? 'the wallet disconnected')));

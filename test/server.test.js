@@ -38,5 +38,12 @@ test('HTTP: submit, read, and the reviewer gate needs the token', async (t) => {
   assert.equal((await post('/api/tasks', { description: 'sixth', priceSats: 2000 })).status, 429, 'without TRUST_PROXY the socket address counts');
   const auditView = await (await fetch(`${base}/api/audit`)).json();
   assert.deepEqual(auditView.verified, { ok: true });
-  assert.equal((await fetch(base + '/')).headers.get('content-type'), 'text/html; charset=utf-8');
+  const home = await fetch(base + '/');
+  assert.equal(home.headers.get('content-type'), 'text/html; charset=utf-8');
+  assert.match(home.headers.get('content-security-policy'), /script-src 'self' 'wasm-unsafe-eval'; /);
+  assert.equal(home.headers.get('x-content-type-options'), 'nosniff');
+  assert.doesNotMatch(await home.text(), /<script>/, 'no inline script');
+  for (const js of ['/app.js', '/owner.js', '/deck.js']) assert.equal((await fetch(base + js)).status, 200, js);
+  assert.equal((await fetch(`${base}/api/config`)).headers.get('cache-control'), 'no-store');
+  assert.equal((await fetch(`${base}/../src/server.js`)).status, 404);
 });

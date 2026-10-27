@@ -3,6 +3,9 @@ import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 
 const GENESIS = '0'.repeat(64);
+
+// The public log names a task only by this reference: a task id unlocks its paid result, so the id itself never appears.
+export const taskRef = (taskId) => createHash('sha256').update(String(taskId)).digest('hex').slice(0, 16);
 const hashOf = (prevHash, body) => createHash('sha256').update(prevHash + JSON.stringify(body)).digest('hex');
 
 export function createAuditLog(path) {

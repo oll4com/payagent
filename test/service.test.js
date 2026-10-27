@@ -59,3 +59,11 @@ test('input is validated at the boundary', async () => {
   await assert.rejects(service.submit({ description: 'ok', priceSats: -1 }), /priceSats/);
   assert.throws(() => service.view('nope'), /not found/);
 });
+
+test('payment checks read the chain at most once per interval', async () => {
+  const { service, reads } = setup({ env: { PAYMENT_RECHECK_MS: '60000' } });
+  const t = await service.submit({ description: 'throttle', priceSats: 2000 });
+  const before = reads.count;
+  for (let i = 0; i < 5; i += 1) await service.checkPayment(t.id);
+  assert.equal(reads.count - before, 1);
+});
