@@ -11,10 +11,30 @@ import { checkAddress, checkXpub, createOwnerStore, tokenAddress } from './recei
 
 const MAX_BODY = 256 * 1024; // a signed transaction with many inputs
 
+// Fixed windows kept in memory: a restart forgets them, which only ever lets a few extra tasks through.
+export function createTaskLimiter({ tasksPerIpHour, tasksPerDay }, now = () => Date.now()) {
+  const perIp = new Map();
+  let day = { start: 0, count: 0 };
+  return (ip) => {
+    const t = now();
+    if (t - day.start >= 86_400_000) day = { start: t, count: 0 };
+    const recent = (perIp.get(ip) ?? []).filter((at) => t - at < 3_600_000);
+    if (recent.length >= tasksPerIpHour) return 'too many tasks from your address this hour; try again later';
+    if (day.count >= tasksPerDay) return 'the demo has reached its task limit for today; try again tomorrow';
+    recent.push(t);
+    perIp.set(ip, recent);
+    day.count += 1;
+    return null;
+  };
+}
+
 export function createApp({ config, service, audit, owner }) {
   const page = readFileSync(new URL('../public/index.html', import.meta.url));
   const ownerPage = readFileSync(new URL('../public/owner.html', import.meta.url));
   const deck = readFileSync(new URL('../public/presentation.html', import.meta.url));
+  const limitTask = createTaskLimiter(config);
+  // nginx on the same host sets X-Forwarded-For; any other caller is counted by its socket address.
+  const clientIp = (req) => (['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress) && req.headers['x-forwarded-for']?.split(',').pop().trim()) || req.socket.remoteAddress;
   const isReviewer = (req) => {
     const given = Buffer.from(String(req.headers['x-review-token'] ?? ''));
     const want = Buffer.from(config.reviewToken);
@@ -96,7 +116,11 @@ export function createApp({ config, service, audit, owner }) {
       if (resource !== 'tasks') return send(404, { error: 'not found' });
       // The list hands out task ids, and an id unlocks a paid result: reviewers only.
       if (!id && req.method === 'GET') return isReviewer(req) ? send(200, service.list()) : send(403, { error: 'reviewer token required' });
-      if (!id && req.method === 'POST') return send(201, await service.submit(await body(req)));
+      if (!id && req.method === 'POST') {
+        const limited = limitTask(clientIp(req));
+        if (limited) return send(429, { error: limited });
+        return send(201, await service.submit(await body(req)));
+      }
       if (id && !action && req.method === 'GET') return send(200, service.view(id));
       if (action === 'check' && req.method === 'POST') return send(200, await service.checkPayment(id));
       if (action === 'payment-request' && req.method === 'POST') return send(200, await service.paymentRequest(id, (await body(req)).paths));
@@ -123,7 +147,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const audit = createAuditLog(join(config.dataDir, 'audit.jsonl'));
   const owner = createOwnerStore(join(config.dataDir, 'owner.json'), config);
   const service = createService({
-    config, audit, owner, chain: createElectrumChain(config.electrumHost), agent: createAgent(),
+    config, audit, owner, chain: createElectrumChain(config.electrumHost), agent: createAgent(process.env, config.agentMaxTokens),
     storePath: join(config.dataDir, 'tasks.json')
   });
   createApp({ config, service, audit, owner }).listen(config.port, () => console.log(`pay-per-task agent on :${config.port} (${config.network})`));

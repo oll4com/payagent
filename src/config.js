@@ -16,6 +16,10 @@ export function loadConfig(env = process.env) {
     hdPublicKeyPath: env.HD_PUBLIC_KEY_PATH ?? 'account',
     receiveAddress: env.RECEIVE_ADDRESS ?? '',
     paymentWindowHours: sats('PAYMENT_WINDOW_HOURS', 24),
+    // Abuse limits for a public demo whose payments are free test coins: new tasks per client per hour and per day overall.
+    tasksPerIpHour: sats('TASKS_PER_IP_HOUR', 5),
+    tasksPerDay: sats('TASKS_PER_DAY', 200),
+    agentMaxTokens: sats('AGENT_MAX_TOKENS', 800),
     electrumHost: env.ELECTRUM_HOST ?? (network === 'chipnet' ? 'chipnet.imaginary.cash' : 'bch.imaginary.cash'),
     minPriceSats: sats('MIN_PRICE_SATS', 1000),
     autoMaxSats: sats('AUTO_MAX_SATS', 50_000),
